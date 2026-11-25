@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NeoAlexandria Era — Alka World Map</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d1015;
+      color: #eef2f7;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      user-select: none;
+    }
+    #viewport {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      cursor: grab;
+      background: #090c10;
+    }
+    #viewport.dragging { cursor: grabbing; }
+    #map-stage {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform-origin: 0 0;
+    }
+    #world-img {
+      display: block;
+      image-rendering: pixelated;
+      max-width: none;
+    }
+    .marker {
+      position: absolute;
+      transform: translate(-50%, -100%);
+      pointer-events: auto;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      z-index: 5;
+    }
+    .marker-label {
+      background: rgba(13, 16, 21, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      color: #f8fafc;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+      margin-bottom: 3px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    }
+    .marker-pin {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+    }
+    .pin-landmark { background: #38bdf8; }
+    .pin-merchant { background: #f59e0b; }
+    .pin-fence { background: #64748b; }
+    .pin-player {
+      width: 18px;
+      height: 18px;
+      background: #ef4444;
+      box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.35), 0 0 14px rgba(239, 68, 68, 0.9);
+      z-index: 15;
+    }
+    .pin-caravan {
+      width: 16px;
+      height: 16px;
+      background: #eab308;
+      border-radius: 3px;
+      transform: rotate(45deg);
+      box-shadow: 0 0 12px rgba(234, 179, 8, 0.85);
+      z-index: 14;
+    }
+    .hud-panel {
+      position: fixed;
+      z-index: 20;
+      background: rgba(17, 22, 30, 0.9);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      padding: 12px 14px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    }
+    #top-left { top: 14px; left: 14px; min-width: 265px; max-width: 340px; }
+    #top-left h1 { font-size: 15px; color: #fbbf24; margin-bottom: 6px; }
+    .stat-row { font-size: 12.5px; color: #cbd5e1; margin: 3px 0; }
+    .stat-row strong { color: #f8fafc; }
+    .badge {
+      display: inline-block;
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      background: rgba(251, 191, 36, 0.18);
+      color: #fcd34d;
+      border: 1px solid rgba(251, 191, 36, 0.35);
+    }
+    .btn-row { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+    button {
+      background: #1e293b;
+      color: #f8fafc;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 6px;
+      padding: 5px 9px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    button:hover { background: #334155; }
+    #bottom-bar {
+      bottom: 14px;
+      left: 14px;
+      font-size: 12px;
+      color: #94a3b8;
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }
+    #legend {
+      bottom: 14px;
+      right: 14px;
+      font-size: 12px;
+      color: #cbd5e1;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .leg-item { display: flex; align-items: center; gap: 6px; }
+    .leg-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    #error-banner {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 30;
+      background: rgba(127, 29, 29, 0.95);
+      border: 1px solid #f87171;
+      color: #fef2f2;
+      padding: 18px 22px;
+      border-radius: 10px;
+      max-width: 420px;
+      text-align: center;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div id="viewport">
+    <div id="map-stage">
+      <img id="world-img" src="./Alka.png" alt="Alka World Map" />
+      <div id="markers-layer"></div>
+    </div>
+  </div>
+
+  <div id="top-left" class="hud-panel">
+    <h1>NeoAlexandria World Map</h1>
+    <div id="player-info">
+      <div class="stat-row">Waiting for player coordinates...</div>
+    </div>
+    <div class="btn-row">
+      <button id="btn-center-player">Center on Player</button>
+      <button id="btn-reset-view">Fit Whole Map</button>
+      <button id="btn-toggle-pins">Toggle Pins</button>
+    </div>
+  </div>
+
+  <div id="bottom-bar" class="hud-panel">
+    <span id="cursor-coords">MC Coords: X: 0, Z: 0</span>
+    <span>Scroll to zoom • Drag to pan</span>
+  </div>
+
+  <div id="legend" class="hud-panel">
+    <span class="leg-item"><i class="leg-dot" style="background:#ef4444;"></i>Player</span>
+    <span class="leg-item"><i class="leg-dot" style="background:#eab308;"></i>Caravan</span>
+    <span class="leg-item"><i class="leg-dot" style="background:#f59e0b;"></i>Merchant</span>
+    <span class="leg-item"><i class="leg-dot" style="background:#38bdf8;"></i>Town / Spot</span>
+  </div>
+
+  <div id="error-banner">
+    <strong>Could not load <code>Alka.jpg</code></strong><br />
+    Make sure <code>Alka.jpg</code> is placed in the exact same folder as <code>index.html</code>.
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. WORLDPAINTER BOUNDARIES (Replace with exact minX, maxX, minZ, maxZ)
+    // =========================================================================
+    const WORLD_BOUNDS = {
+      minX: -4000,
+      maxX: 6500,
+      minZ: -2000,
+      maxZ: 2500
+    };
+
+    // =========================================================================
+    // 2. PRE-MARKED TOWNS, MERCHANTS & SRO ZONES
+    // =========================================================================
+    const LANDMARKS = [
+      { name: "Alka Town", x: 5058, z: 486, type: "landmark" },
+      { name: "Alka's Merchant", x: 5161, z: 624, type: "merchant" },
+      { name: "Oasis Town", x: 2182, z: -496, type: "landmark" },
+      { name: "Oasis's Merchant", x: 2112, z: -466, type: "merchant" },
+      { name: "Crestfall Town", x: -1266, z: 1563, type: "landmark" },
+      { name: "Crestfall's Merchant", x: -1339, z: 1579, type: "merchant" },
+      { name: "Thief Fence", x: 0, z: 0, type: "fence" },
+      { name: "Yarkan Yard", x: -2929, z: -933, type: "landmark" },
+      { name: "Bandits Mountain", x: 3509, z: 1629, type: "landmark" },
+      { name: "Bandits Den", x: 1218, z: 1624, type: "landmark" },
+      { name: "Icy Area", x: -2854, z: 1934, type: "landmark" },
+      { name: "Alka's Tomb", x: 5836, z: -372, type: "landmark" },
+      { name: "Oasis Temple", x: 1096, z: -1072, type: "landmark" }
+    ];
+
+    // =========================================================================
+    // 3. URL QUERY PARAMETERS FROM /MAP
+    // =========================================================================
+    const params = new URLSearchParams(window.location.search);
+    const playerName = params.get("player") || "";
+    const worldName = params.get("world") || "world";
+    const px = parseFloat(params.get("x"));
+    const py = parseFloat(params.get("y"));
+    const pz = parseFloat(params.get("z"));
+    const job = params.get("job") || "None";
+    const suit = params.get("suit") || "OFF";
+    const caravan = params.get("caravan") || "None";
+    const cx = parseFloat(params.get("cx"));
+    const cz = parseFloat(params.get("cz"));
+
+    const viewport = document.getElementById("viewport");
+    const stage = document.getElementById("map-stage");
+    const img = document.getElementById("world-img");
+    const markersLayer = document.getElementById("markers-layer");
+    const cursorCoordsEl = document.getElementById("cursor-coords");
+    const playerInfoEl = document.getElementById("player-info");
+    const errorBanner = document.getElementById("error-banner");
+
+    let imgWidth = 1050;
+    let imgHeight = 450;
+    let scale = 0.5;
+    let panX = 0;
+    let panY = 0;
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let showPins = true;
+
+    function mcToPixel(mcX, mcZ) {
+      const spanX = WORLD_BOUNDS.maxX - WORLD_BOUNDS.minX || 1;
+      const spanZ = WORLD_BOUNDS.maxZ - WORLD_BOUNDS.minZ || 1;
+      const u = (mcX - WORLD_BOUNDS.minX) / spanX;
+      const v = (mcZ - WORLD_BOUNDS.minZ) / spanZ;
+      return {
+        px: u * imgWidth,
+        py: v * imgHeight
+      };
+    }
+
+    function pixelToMc(pxVal, pyVal) {
+      const spanX = WORLD_BOUNDS.maxX - WORLD_BOUNDS.minX;
+      const spanZ = WORLD_BOUNDS.maxZ - WORLD_BOUNDS.minZ;
+      const u = pxVal / (imgWidth || 1);
+      const v = pyVal / (imgHeight || 1);
+      return {
+        x: Math.round(WORLD_BOUNDS.minX + u * spanX),
+        z: Math.round(WORLD_BOUNDS.minZ + v * spanZ)
+      };
+    }
+
+    function applyTransform() {
+      stage.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+    }
+
+    function fitWholeMap() {
+      const pad = 40;
+      const vw = Math.max(200, viewport.clientWidth - pad * 2);
+      const vh = Math.max(200, viewport.clientHeight - pad * 2);
+      scale = Math.min(vw / imgWidth, vh / imgHeight);
+      if (!isFinite(scale) || scale <= 0) scale = 0.5;
+      panX = (viewport.clientWidth - imgWidth * scale) / 2;
+      panY = (viewport.clientHeight - imgHeight * scale) / 2;
+      applyTransform();
+    }
+
+    function centerOnMc(mcX, mcZ, targetScale = 1.2) {
+      const pt = mcToPixel(mcX, mcZ);
+      scale = targetScale;
+      panX = viewport.clientWidth / 2 - pt.px * scale;
+      panY = viewport.clientHeight / 2 - pt.py * scale;
+      applyTransform();
+    }
+
+    function addMarker(label, mcX, mcZ, kind) {
+      const pt = mcToPixel(mcX, mcZ);
+      const el = document.createElement("div");
+      el.className = "marker";
+      el.style.left = `${pt.px}px`;
+      el.style.top = `${pt.py}px`;
+      el.title = `${label} (${Math.round(mcX)}, ${Math.round(mcZ)})`;
+
+      const lbl = document.createElement("div");
+      lbl.className = "marker-label";
+      lbl.textContent = label;
+
+      const pin = document.createElement("div");
+      pin.className = `marker-pin pin-${kind}`;
+
+      el.appendChild(lbl);
+      el.appendChild(pin);
+      markersLayer.appendChild(el);
+    }
+
+    function renderMarkers() {
+      markersLayer.innerHTML = "";
+      if (!showPins) return;
+
+      for (const lm of LANDMARKS) {
+        addMarker(lm.name, lm.x, lm.z, lm.type);
+      }
+
+      if (!isNaN(cx) && !isNaN(cz)) {
+        addMarker(`Caravan: ${caravan}`, cx, cz, "caravan");
+      }
+
+      if (!isNaN(px) && !isNaN(pz)) {
+        const title = playerName ? `${playerName} (You)` : "Your Location";
+        addMarker(title, px, pz, "player");
+      }
+    }
+
+    function renderPlayerCard() {
+      if (isNaN(px) || isNaN(pz)) {
+        playerInfoEl.innerHTML = `
+          <div class="stat-row">Run <code>/map</code> in-game to open with your live coordinates.</div>
+          <div class="stat-row">Bounds: <strong>X [${WORLD_BOUNDS.minX}..${WORLD_BOUNDS.maxX}]</strong>, <strong>Z [${WORLD_BOUNDS.minZ}..${WORLD_BOUNDS.maxZ}]</strong></div>
+        `;
+        return;
+      }
+
+      const yText = !isNaN(py) ? `, ${Math.round(py)}` : "";
+      playerInfoEl.innerHTML = `
+        <div class="stat-row">Player: <strong>${playerName || "Explorer"}</strong> <span class="badge">${job}</span></div>
+        <div class="stat-row">World: <strong>${worldName}</strong> • Suit: <strong>${suit}</strong></div>
+        <div class="stat-row">Pos: <strong>X: ${Math.round(px)}${yText}, Z: ${Math.round(pz)}</strong></div>
+        <div class="stat-row">Caravan: <strong>${caravan}</strong></div>
+      `;
+    }
+
+    viewport.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      isDragging = true;
+      dragStartX = e.clientX - panX;
+      dragStartY = e.clientY - panY;
+      viewport.classList.add("dragging");
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      const rect = viewport.getBoundingClientRect();
+      const vx = e.clientX - rect.left;
+      const vy = e.clientY - rect.top;
+      const mapPx = (vx - panX) / scale;
+      const mapPy = (vy - panY) / scale;
+      const mc = pixelToMc(mapPx, mapPy);
+      cursorCoordsEl.textContent = `MC Coords: X: ${mc.x}, Z: ${mc.z}`;
+
+      if (!isDragging) return;
+      panX = e.clientX - dragStartX;
+      panY = e.clientY - dragStartY;
+      applyTransform();
+    });
+
+    window.addEventListener("mouseup", () => {
+      isDragging = false;
+      viewport.classList.remove("dragging");
+    });
+
+    viewport.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const rect = viewport.getBoundingClientRect();
+      const vx = e.clientX - rect.left;
+      const vy = e.clientY - rect.top;
+
+      const zoomFactor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
+      const nextScale = Math.min(8, Math.max(0.08, scale * zoomFactor));
+
+      const beforeX = (vx - panX) / scale;
+      const beforeY = (vy - panY) / scale;
+
+      scale = nextScale;
+      panX = vx - beforeX * scale;
+      panY = vy - beforeY * scale;
+      applyTransform();
+    }, { passive: false });
+
+    document.getElementById("btn-center-player").addEventListener("click", () => {
+      if (!isNaN(px) && !isNaN(pz)) {
+        centerOnMc(px, pz, 1.35);
+      } else {
+        fitWholeMap();
+      }
+    });
+
+    document.getElementById("btn-reset-view").addEventListener("click", fitWholeMap);
+
+    document.getElementById("btn-toggle-pins").addEventListener("click", () => {
+      showPins = !showPins;
+      renderMarkers();
+    });
+
+    img.addEventListener("load", () => {
+      imgWidth = img.naturalWidth || 1050;
+      imgHeight = img.naturalHeight || 450;
+      renderMarkers();
+      if (!isNaN(px) && !isNaN(pz)) {
+        centerOnMc(px, pz, 1.1);
+      } else {
+        fitWholeMap();
+      }
+    });
+
+    img.addEventListener("error", () => {
+      errorBanner.style.display = "block";
+      fitWholeMap();
+    });
+
+    renderPlayerCard();
+  </script>
+</body>
+</html>
